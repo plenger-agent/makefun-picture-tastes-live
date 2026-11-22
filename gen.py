@@ -1,223 +1,185 @@
 #!/usr/bin/env python3
-"""Render a strawberry macro: three whole glossy berries + one halved berry
-in front, on a dark green ground. 3x supersampled, 1024x1024 PNG output."""
-import math, random
+"""Fresh render of a strawberry macro: three whole glossy berries plus one
+halved berry in the foreground, on a dark green ground. Supersampled 3x and
+downscaled to a 1024x1024 PNG. No text anywhere in the image."""
+import math
+import random
 from PIL import Image, ImageDraw, ImageFilter
 
-S = 3
-W = H = 1024 * S
-random.seed(7)
+SS = 3
+SIZE = 1024 * SS
+rng = random.Random(20261123)
 
-img = Image.new("RGB", (W, H), (16, 54, 22))
-d = ImageDraw.Draw(img, "RGBA")
+canvas = Image.new("RGB", (SIZE, SIZE), (14, 48, 20))
+pen = ImageDraw.Draw(canvas, "RGBA")
 
-# ---- dark green ground with soft vignette / mottling ----
-for _ in range(900):
-    x = random.uniform(0, W); y = random.uniform(0, H)
-    r = random.uniform(6, 60)
-    g = random.randint(20, 70)
-    d.ellipse([x - r, y - r, x + r, y + r], fill=(8 + random.randint(0, 20), g, 12 + random.randint(0, 18), 26))
-for _ in range(60):  # faint leaf blades along bottom
-    x = random.uniform(-100, W); y = H + random.uniform(-40, 40)
-    ln = random.uniform(300, 900)
-    ang = random.uniform(-1.1, -0.4)
-    x2 = x + math.cos(ang) * ln; y2 = y + math.sin(ang) * ln
-    d.line([x, y, x2, y2], fill=(10, 60, 18, 90), width=int(random.uniform(18, 48)))
 
-def lerp(a, b, t):
-    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+def mix(c1, c2, t):
+    return tuple(round(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
 
-def berry_body(cx, cy, w, h, tilt=0.0, flip=False):
-    """A whole strawberry: conical heart shape with vertical red gradient."""
-    # body outline: wide shoulders, tapering to a rounded tip
+
+# ---------- dark green ground ----------
+for _ in range(1100):
+    x = rng.uniform(0, SIZE)
+    y = rng.uniform(0, SIZE)
+    r = rng.uniform(8, 70)
+    pen.ellipse([x - r, y - r, x + r, y + r],
+                fill=(rng.randint(6, 26), rng.randint(22, 72),
+                      rng.randint(10, 30), 24))
+for _ in range(70):
+    x = rng.uniform(-80, SIZE)
+    y = SIZE + rng.uniform(-30, 60)
+    length = rng.uniform(350, 950)
+    ang = rng.uniform(-1.05, -0.45)
+    pen.line([x, y, x + math.cos(ang) * length, y + math.sin(ang) * length],
+             fill=(12, 64, 20, 85), width=int(rng.uniform(20, 52)))
+
+
+def half_width(t):
+    """Berry width profile: t=0 at the shoulders, t=1 at the tip."""
+    return (math.sin(math.pi * 0.5 * (1 - t) ** 0.6 + 0.07) ** 0.85) * (1 - 0.38 * t ** 3)
+
+
+def outline(cx, cy, w, h):
+    """Closed polygon of a strawberry body."""
     pts = []
-    steps = 64
-    for i in range(steps + 1):
-        t = i / steps  # 0 top -> 1 tip
-        # width profile: shoulders bulge then taper
-        prof = math.sin(math.pi * (0.12 + 0.88 * (1 - t) * 0.5)) if False else None
-        half = (w / 2) * (math.sin(math.pi * 0.5 * (1 - t) ** 0.62 + 0.08) ** 0.9)
-        half *= (1 - 0.35 * t ** 3)
-        y = cy - h / 2 + t * h
-        x = cx + half * (1 if i <= steps // 2 else -1) * 0  # placeholder
-        pts.append((y, half))
-    # build polygon: right edge top->tip, left edge tip->top
-    poly = []
-    for y, half in pts:
-        poly.append((cx + half, y))
-    for y, half in reversed(pts):
-        poly.append((cx - half, y))
-    d.polygon(poly, fill=(196, 18, 28))
-    # vertical gradient overlay: bright red top -> deep red bottom
-    grad = Image.new("L", (1, H))
-    gd = ImageDraw.Draw(grad)
-    for yy in range(H):
-        tt = yy / H
-        v = int(255 * max(0.0, 1 - abs(tt - 0.25) * 2.2))
-        gd.point((0, yy), fill=v)
-    # simpler: draw horizontal bands clipped to body via mask
-    mask = Image.new("L", (W, H), 0)
-    md = ImageDraw.Draw(mask)
-    md.polygon(poly, fill=255)
-    top = Image.new("RGB", (W, H), (238, 64, 48))
-    mid = Image.new("RGB", (W, H), (198, 22, 30))
-    bot = Image.new("RGB", (W, H), (128, 8, 18))
-    band = Image.new("RGB", (W, H), (0, 0, 0))
-    bd = ImageDraw.Draw(band)
-    for yy in range(int(cy - h / 2), int(cy + h / 2)):
-        t = (yy - (cy - h / 2)) / h
-        if t < 0.45:
-            c = lerp((238, 64, 48), (198, 22, 30), t / 0.45)
+    n = 72
+    for i in range(n + 1):
+        t = i / n
+        pts.append((cx + half_width(t) * w / 2, cy - h / 2 + t * h))
+    for i in range(n, -1, -1):
+        t = i / n
+        pts.append((cx - half_width(t) * w / 2, cy - h / 2 + t * h))
+    return pts
+
+
+def whole_berry(cx, cy, w, h):
+    poly = outline(cx, cy, w, h)
+    # red body: horizontal gradient bands clipped to the body mask
+    mask = Image.new("L", (SIZE, SIZE), 0)
+    ImageDraw.Draw(mask).polygon(poly, fill=255)
+    bands = Image.new("RGB", (SIZE, SIZE))
+    bd = ImageDraw.Draw(bands)
+    top_y, bot_y = int(cy - h / 2), int(cy + h / 2)
+    for yy in range(top_y, bot_y + 1):
+        t = (yy - top_y) / h
+        if t < 0.42:
+            col = mix((240, 66, 50), (200, 22, 32), t / 0.42)
         else:
-            c = lerp((198, 22, 30), (128, 8, 18), (t - 0.45) / 0.55)
-        bd.line([(0, yy), (W, yy)], fill=c)
-    img.paste(band, (0, 0), mask)
-    # side shading: darker on right edge, lighter on left
-    sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sh)
+            col = mix((200, 22, 32), (126, 8, 18), (t - 0.42) / 0.58)
+        bd.line([(0, yy), (SIZE, yy)], fill=col)
+    canvas.paste(bands, (0, 0), mask)
+    # soft side shading: warm light left, deep shadow right
+    shade = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shade)
     sd.ellipse([cx - w * 0.52, cy - h * 0.52, cx + w * 0.52, cy + h * 0.52],
-               outline=(60, 0, 6, 110), width=int(w * 0.10))
-    sd.ellipse([cx - w * 0.34, cy - h * 0.46, cx - w * 0.02, cy + h * 0.30],
-               fill=(255, 120, 100, 60))
-    img.paste(sh, (0, 0), sh)
-    return poly
-
-def seeds(cx, cy, w, h, count=46, scale=1.0):
-    """Achenes: small pale seeds in shadowed pits, arranged in rows."""
-    rows = 7
-    for r in range(rows):
-        t = (r + 0.5) / rows  # 0 top -> 1 tip
-        y = cy - h / 2 + t * h * 0.96
-        half = (w / 2) * (math.sin(math.pi * 0.5 * (1 - t) ** 0.62 + 0.08) ** 0.9)
-        half *= (1 - 0.35 * t ** 3)
-        n = max(2, int(half / (w * 0.085)))
-        for k in range(n):
-            fx = (k + 0.5) / n * 2 - 1
-            x = cx + fx * half * 0.86
-            sx = random.uniform(-6, 6); sy = random.uniform(-4, 4)
-            px, py = x + sx, y + sy
-            if abs(px - cx) > half * 0.9:
-                continue
-            s = w * 0.016 * scale
-            # pit shadow
-            d.ellipse([px - s * 1.5, py - s * 0.9, px + s * 1.5, py + s * 1.4],
-                      fill=(90, 4, 10, 170))
-            # seed
-            d.ellipse([px - s, py - s * 1.25, px + s, py + s * 1.25],
-                      fill=(250, 226, 160))
-            d.ellipse([px - s * 0.55, py - s * 0.9, px + s * 0.2, py - s * 0.1],
-                      fill=(255, 244, 200))
-
-def gloss(cx, cy, w, h):
-    """Shoulder gloss: soft white highlight upper-left of the berry."""
-    g = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(g)
-    gd.ellipse([cx - w * 0.34, cy - h * 0.42, cx + w * 0.06, cy - h * 0.08],
+               outline=(70, 0, 8, 105), width=int(w * 0.09))
+    sd.ellipse([cx - w * 0.36, cy - h * 0.44, cx - w * 0.04, cy + h * 0.28],
+               fill=(255, 118, 96, 55))
+    canvas.paste(shade, (0, 0), shade)
+    # achenes: golden-angle scatter inside the body, each in a pit shadow
+    golden = math.pi * (3 - math.sqrt(5))
+    for k in range(64):
+        t = 0.06 + 0.88 * (k / 64) ** 0.9
+        ang = k * golden
+        reach = half_width(t) * w / 2 * 0.86
+        px = cx + math.cos(ang) * reach * rng.uniform(0.55, 1.0)
+        py = cy - h / 2 + t * h + rng.uniform(-8, 8)
+        if abs(px - cx) > half_width(t) * w / 2 * 0.9:
+            continue
+        s = w * 0.017
+        pen.ellipse([px - s * 1.6, py - s, px + s * 1.6, py + s * 1.5],
+                    fill=(96, 4, 12, 175))
+        pen.ellipse([px - s, py - s * 1.3, px + s, py + s * 1.3],
+                    fill=(251, 228, 162))
+        pen.ellipse([px - s * 0.5, py - s * 0.95, px + s * 0.25, py - s * 0.15],
+                    fill=(255, 245, 202))
+    # shoulder gloss
+    glow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse([cx - w * 0.36, cy - h * 0.44, cx + w * 0.04, cy - h * 0.10],
                fill=(255, 255, 255, 150))
-    gd.ellipse([cx - w * 0.28, cy - h * 0.38, cx + w * 0.0, cy - h * 0.12],
-               fill=(255, 255, 255, 110))
-    g = g.filter(ImageFilter.GaussianBlur(int(w * 0.03)))
-    img.paste(g, (0, 0), g)
-
-def droplets(cx, cy, w, h, count=9):
-    for _ in range(count):
-        t = random.uniform(0.1, 0.85)
+    gd.ellipse([cx - w * 0.28, cy - h * 0.40, cx - w * 0.02, cy - h * 0.14],
+               fill=(255, 255, 255, 105))
+    glow = glow.filter(ImageFilter.GaussianBlur(int(w * 0.03)))
+    canvas.paste(glow, (0, 0), glow)
+    # water droplets
+    for _ in range(10):
+        t = rng.uniform(0.12, 0.85)
         y = cy - h / 2 + t * h
-        half = (w / 2) * (math.sin(math.pi * 0.5 * (1 - t) ** 0.62 + 0.08) ** 0.9)
-        half *= (1 - 0.35 * t ** 3)
-        x = cx + random.uniform(-0.7, 0.7) * half
-        r = random.uniform(w * 0.012, w * 0.026)
-        d.ellipse([x - r, y - r, x + r, y + r], fill=(255, 255, 255, 60))
-        d.ellipse([x - r * 0.5, y - r * 0.6, x + r * 0.1, y - r * 0.1],
-                  fill=(255, 255, 255, 200))
-
-def calyx(cx, cy, w):
-    """Green star calyx + stem at the top of a berry."""
-    lw = w * 0.16
+        x = cx + rng.uniform(-0.65, 0.65) * half_width(t) * w / 2
+        r = rng.uniform(w * 0.013, w * 0.027)
+        pen.ellipse([x - r, y - r, x + r, y + r], fill=(255, 255, 255, 55))
+        pen.ellipse([x - r * 0.55, y - r * 0.65, x + r * 0.1, y - r * 0.1],
+                    fill=(255, 255, 255, 205))
+    # green calyx star + stem
+    top = cy - h / 2
+    leaf_w = w * 0.15
     for k in range(6):
-        ang = -math.pi / 2 + (k - 2.5) * 0.42
-        x2 = cx + math.cos(ang) * w * 0.42
-        y2 = cy + math.sin(ang) * w * 0.30
-        d.polygon([(cx, cy), (cx + math.cos(ang - 0.16) * lw, cy + math.sin(ang - 0.16) * lw),
-                   (x2, y2),
-                   (cx + math.cos(ang + 0.16) * lw, cy + math.sin(ang + 0.16) * lw)],
-                  fill=(24, 110, 34))
-    d.ellipse([cx - w * 0.10, cy - w * 0.06, cx + w * 0.10, cy + w * 0.06],
-              fill=(16, 92, 26))
-    # stem
-    d.line([cx, cy - w * 0.05, cx + w * 0.03, cy - w * 0.24],
-           fill=(34, 96, 30), width=int(w * 0.045))
+        ang = -math.pi / 2 + (k - 2.5) * 0.44
+        tip = (cx + math.cos(ang) * w * 0.44, top + math.sin(ang) * w * 0.32)
+        pen.polygon([(cx, top),
+                     (cx + math.cos(ang - 0.17) * leaf_w,
+                      top + math.sin(ang - 0.17) * leaf_w),
+                     tip,
+                     (cx + math.cos(ang + 0.17) * leaf_w,
+                      top + math.sin(ang + 0.17) * leaf_w)],
+                    fill=(26, 112, 36))
+    pen.ellipse([cx - w * 0.10, top - w * 0.06, cx + w * 0.10, top + w * 0.06],
+                fill=(18, 94, 28))
+    pen.line([cx, top - w * 0.04, cx + w * 0.03, top - w * 0.26],
+             fill=(36, 98, 32), width=int(w * 0.05))
 
-# ---- three whole berries (back row) ----
-# left berry
-berry_body(620, 1050, 1050, 1380)
-seeds(620, 1050, 1050, 1380)
-gloss(620, 1050, 1050, 1380)
-droplets(620, 1050, 1050, 1380)
-calyx(620, 1050 - 690, 1050)
-# right berry
-berry_body(2250, 1000, 1150, 1450)
-seeds(2250, 1000, 1150, 1450)
-gloss(2250, 1000, 1150, 1450)
-droplets(2250, 1000, 1150, 1450)
-calyx(2250, 1000 - 725, 1150)
-# centre-back berry, slightly higher
-berry_body(1460, 830, 1000, 1300)
-seeds(1460, 830, 1000, 1300)
-gloss(1460, 830, 1000, 1300)
-droplets(1460, 830, 1000, 1300)
-calyx(1460, 830 - 650, 1000)
 
-# ---- halved berry in front ----
-hx, hy, hw, hh = 1520, 2180, 1500, 1150
-# cut face: pale pink ellipse
-face = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-fd = ImageDraw.Draw(face)
-fd.ellipse([hx - hw / 2, hy - hh / 2, hx + hw / 2, hy + hh / 2], fill=(244, 176, 152, 255))
-# flesh striations radiating from centre
-for k in range(26):
-    ang = k / 26 * 2 * math.pi
-    x2 = hx + math.cos(ang) * hw * 0.46
-    y2 = hy + math.sin(ang) * hh * 0.44
-    fd.line([hx, hy, x2, y2], fill=(214, 120, 96, 130), width=6)
-# pale heart core
-fd.ellipse([hx - hw * 0.10, hy - hh * 0.15, hx + hw * 0.10, hy + hh * 0.15],
-           fill=(252, 232, 214, 255))
-fd.ellipse([hx - hw * 0.055, hy - hh * 0.09, hx + hw * 0.055, hy + hh * 0.09],
-           fill=(255, 244, 232, 255))
-# seeds embedded in the cut face
-for k in range(16):
-    ang = k / 16 * 2 * math.pi + 0.22
-    rx = hw * 0.33; ry = hh * 0.30
-    px = hx + math.cos(ang) * rx; py = hy + math.sin(ang) * ry
-    s = 34
-    fd.ellipse([px - s * 0.5, py - s * 0.8, px + s * 0.5, py + s * 0.8],
-               fill=(196, 120, 70, 255))
-    fd.ellipse([px - s * 0.28, py - s * 0.55, px + s * 0.28, py + s * 0.55],
-               fill=(250, 214, 168, 255))
-img.paste(face, (0, 0), face)
-# red rim around the cut face
-d.ellipse([hx - hw / 2, hy - hh / 2, hx + hw / 2, hy + hh / 2],
-          outline=(186, 20, 30), width=26)
-# gloss on the cut face
-g2 = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-g2d = ImageDraw.Draw(g2)
-g2d.ellipse([hx - hw * 0.34, hy - hh * 0.42, hx - hw * 0.02, hy - hh * 0.10],
-            fill=(255, 255, 255, 120))
-g2 = g2.filter(ImageFilter.GaussianBlur(30))
-img.paste(g2, (0, 0), g2)
-# calyx peeking at the top of the halved berry
-calyx(hx, hy - hh / 2 + 40, hw * 0.8)
+def halved_berry(cx, cy, w, h):
+    # contact shadow first, under the fruit
+    sh = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).ellipse(
+        [cx - w * 0.56, cy + h * 0.30, cx + w * 0.56, cy + h * 0.52],
+        fill=(0, 0, 0, 115))
+    sh = sh.filter(ImageFilter.GaussianBlur(42))
+    canvas.paste(sh, (0, 0), sh)
+    # cut face
+    face = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(face)
+    fd.ellipse([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2],
+               fill=(245, 178, 154, 255))
+    for k in range(28):
+        ang = k / 28 * 2 * math.pi
+        fd.line([cx, cy,
+                 cx + math.cos(ang) * w * 0.46,
+                 cy + math.sin(ang) * h * 0.44],
+                fill=(216, 122, 98, 130), width=6)
+    fd.ellipse([cx - w * 0.105, cy - h * 0.15, cx + w * 0.105, cy + h * 0.15],
+               fill=(252, 233, 215, 255))
+    fd.ellipse([cx - w * 0.058, cy - h * 0.09, cx + w * 0.058, cy + h * 0.09],
+               fill=(255, 245, 233, 255))
+    for k in range(16):
+        ang = k / 16 * 2 * math.pi + 0.2
+        px = cx + math.cos(ang) * w * 0.33
+        py = cy + math.sin(ang) * h * 0.30
+        s = 36
+        fd.ellipse([px - s * 0.5, py - s * 0.8, px + s * 0.5, py + s * 0.8],
+                   fill=(198, 122, 72, 255))
+        fd.ellipse([px - s * 0.28, py - s * 0.55, px + s * 0.28, py + s * 0.55],
+                   fill=(251, 215, 170, 255))
+    canvas.paste(face, (0, 0), face)
+    pen.ellipse([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2],
+                outline=(188, 20, 30), width=28)
+    sheen = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    ImageDraw.Draw(sheen).ellipse(
+        [cx - w * 0.34, cy - h * 0.42, cx - w * 0.02, cy - h * 0.10],
+        fill=(255, 255, 255, 120))
+    sheen = sheen.filter(ImageFilter.GaussianBlur(32))
+    canvas.paste(sheen, (0, 0), sheen)
 
-# soft contact shadow under the halved berry
-sh2 = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-s2d = ImageDraw.Draw(sh2)
-s2d.ellipse([hx - hw * 0.55, hy + hh * 0.32, hx + hw * 0.55, hy + hh * 0.52],
-            fill=(0, 0, 0, 110))
-sh2 = sh2.filter(ImageFilter.GaussianBlur(40))
-base = Image.new("RGB", (W, H), (0, 0, 0))
-img.paste(sh2, (0, 0), sh2)
 
-out = img.resize((1024, 1024), Image.LANCZOS)
-out.save("entry.png", optimize=True)
-print("saved entry.png", out.size)
+# ---------- composition: three whole berries, halved one in front ----------
+whole_berry(600, 1020, 1060, 1400)    # left
+whole_berry(2280, 990, 1160, 1460)    # right
+whole_berry(1450, 820, 1010, 1310)    # centre back
+halved_berry(1520, 2190, 1520, 1160)  # foreground, cut face up
+
+final = canvas.resize((1024, 1024), Image.LANCZOS)
+final.save("entry.png", optimize=True)
+print("saved entry.png", final.size)

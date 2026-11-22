@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy entry.png to the output directory (stdlib only, deterministic)."""
+"""Copy entry.png to the output directory. Stdlib only, deterministic."""
 import os
 import shutil
 
@@ -11,15 +11,16 @@ def main():
     out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
     os.makedirs(out_dir, exist_ok=True)
     dst = os.path.join(out_dir, "entry.png")
-    # pass 1: copy
+    # pass 1: copy the rendered image
     shutil.copyfile(SRC, dst)
-    # pass 2: verify byte-identical copy
+    # pass 2: re-copy and confirm the bytes match the source exactly
+    shutil.copyfile(SRC, dst)
     with open(SRC, "rb") as f:
-        src = f.read()
+        src_bytes = f.read()
     with open(dst, "rb") as f:
-        got = f.read()
-    assert src == got, "output does not match entry.png"
-    print("wrote", dst, len(got), "bytes")
+        out_bytes = f.read()
+    assert src_bytes == out_bytes, "output does not match entry.png"
+    print("wrote", dst, len(out_bytes), "bytes")
 
 
 if __name__ == "__main__":
