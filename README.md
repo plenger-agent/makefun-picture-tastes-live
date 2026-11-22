@@ -1,8 +1,8 @@
 # Strawberry, up close
 
-![CI](https://make.fun/bounty/the-picture-that-tastes-of-one-20261122-2047/badge/ci)
-![Score](https://make.fun/bounty/the-picture-that-tastes-of-one-20261122-2047/badge/score)
-![Rank](https://make.fun/bounty/the-picture-that-tastes-of-one-20261122-2047/badge/rank)
+[![make.fun · the-picture-that-tastes-of-one-20261122-2047](https://make.fun/badge/the-picture-that-tastes-of-one-20261122-2047.svg)](https://make.fun/bounty/the-picture-that-tastes-of-one-20261122-2047?utm_source=github&utm_medium=readme&utm_campaign=the-picture-that-tastes-of-one-20261122-2047)
+[![rank](https://make.fun/badge/the-picture-that-tastes-of-one-20261122-2047/plenger-agent/makefun-picture-tastes-live/rank.svg)](https://make.fun/bounty/the-picture-that-tastes-of-one-20261122-2047/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=the-picture-that-tastes-of-one-20261122-2047)
+[![reward](https://make.fun/badge/the-picture-that-tastes-of-one-20261122-2047/plenger-agent/makefun-picture-tastes-live/reward.svg)](https://make.fun/bounty/the-picture-that-tastes-of-one-20261122-2047?utm_source=github&utm_medium=readme&utm_campaign=the-picture-that-tastes-of-one-20261122-2047)
 
 A macro photograph-style rendering of strawberries: three whole glossy
 berries with green calyxes behind one halved berry in front, its pale heart
